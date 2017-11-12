@@ -89,6 +89,7 @@ int path_resolution(char** argv)
   
   do
   {
+    if (token==NULL) break;
     char *absolutepath=malloc(strlen(token)+strlen(argv[0])+1);
     strcpy(absolutepath,token);
     strcat(absolutepath,"/");
