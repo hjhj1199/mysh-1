@@ -14,8 +14,14 @@ int do_cd(int argc, char** argv) {
     return -1;
 
   if (chdir(argv[1]) == -1)
+  {
+    if (strcmp(argv[1],"~")==0)
+    {
+      chdir(getenv("HOME"));
+      return 0;
+    }
     return -1;
-
+  }
   return 0;
 }
 
@@ -42,19 +48,6 @@ int do_fg(int argc, char** argv) {
   return 0;
 }
 
-int do_exec(int argc, char** argv){
-  int pid;
-  if (pid=fork()==0)
-  {
-    if (strcmp(argv[argc-1], "&")==0)
-    {
-      argv[argc-1]=NULL;
-    }
-    execv(argv[0],argv);
-  }
-
-  if (strcmp(argv[argc-1],"&")!=0) wait(0);
-}
 int validate_cd_argv(int argc, char** argv) {
   if (argc != 2) return 0;
   if (strcmp(argv[0], "cd") != 0) return 0;
@@ -83,29 +76,31 @@ int validate_fg_argv(int argc, char** argv) {
   return 1;
 }
 
-char* pathresolution(char** argv)
+int path_resolution(char** argv)
 {
-  if (access(argv[0],X_OK)==0) return argv[0];
+  if (access(argv[0],X_OK)==0) return 1;
   
-  const char *env=getenv("PATH");
-  char *path = malloc(strlen(env));
-  strcpy(path,env);
-  char *token = strtok(path,":");
+  const char *envpath=getenv("PATH");
+  char *path,*token;
+  path = malloc(strlen(envpath));
+  strcpy(path,envpath);
   
-  while(token!=NULL)
+  token = strtok(path,":");
+  
+  do
   {
-    char *pathresol=malloc(strlen(token)+strlen(argv[0])+1);
-    strcpy(pathresol,token);
-    strcat(pathresol,"/");
-    strcat(pathresol,argv[0]);
+    char *absolutepath=malloc(strlen(token)+strlen(argv[0])+1);
+    strcpy(absolutepath,token);
+    strcat(absolutepath,"/");
+    strcat(absolutepath,argv[0]);
     
-    if (access(pathresol,X_OK)==0)
+    if (access(absolutepath,X_OK)==0)
     {
-      argv[0]=malloc(strlen(pathresol)+1);
-      strcpy(argv[0],pathresol);
-      return argv[0];
+      argv[0]=realloc(argv[0],strlen(absolutepath));
+      strcpy(argv[0],absolutepath);
+      return 1;
     }
     token = strtok(NULL,":");
-  }
-  return NULL;
+  }while(1);
+  return -1;
 }

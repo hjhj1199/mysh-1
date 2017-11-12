@@ -10,7 +10,7 @@
 #include "commands.h"
 #include "built_in.h"
 
-#define FILE_SERVER "/tmp/test_server"
+#define FILE_SERVER "/tmp/file_server"
 
 static struct built_in_command built_in_commands[] = {
   { "cd", do_cd, validate_cd_argv },
@@ -40,24 +40,23 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
     if (n_commands == 1)
     {
       struct single_command* com = (*commands);
-      return exec_com(com);
+      return exec_commands(com);
     }
     else
     {
       struct single_command* com= (*commands);
-      struct single_command* next_com = (*commands+1);
-      
+      struct single_command* com_next = (*commands+1);
+      int client_socket;
+      struct sockaddr_un server_addr;
       pthread_t p_thread;
       pthread_attr_t attr;
       pthread_attr_init(&attr);
-      pthread_create(&p_thread,&attr, socket_thread, (void*)next_com);
+      pthread_create(&p_thread,&attr, socket_thread, (void*)com_next);
 
       if (fork()==0)
       {
-        int client_socket;
-        struct sockaddr_un server_addr;
         client_socket=socket(PF_FILE,SOCK_STREAM,0);
-        if (-1==client_socket)
+        if (client_socket==-1)
         {
           fprintf(stderr,"socket error!!\n");
           exit(1);
@@ -68,11 +67,11 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 
         while(1)
         {
-          if (-1==connect(client_socket,(struct sockaddr*)&server_addr,sizeof(server_addr))) continue;
+          if (connect(client_socket,(struct sockaddr*)&server_addr,sizeof(server_addr))==-1) continue;
           close(0);
           close(1);
           dup2(client_socket,1);
-          exec_com(com);
+          exec_commands(com);
           close(client_socket);
           pthread_join(p_thread,NULL);
           exit(0);
@@ -85,8 +84,9 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
   return 0;
 }
 
-int exec_com(struct single_command (*com))
+int exec_commands(struct single_command *com)
 {
+  int status,pid;
   assert(com->argc != 0);
 
   int built_in_pos = is_built_in_command(com->argv[0]);
@@ -103,8 +103,30 @@ int exec_com(struct single_command (*com))
     return 0;
   } else if (strcmp(com->argv[0], "exit") == 0) {
     return 1;
-  } else if (pathresolution(com->argv)){
-    do_exec(com->argc,com->argv);
+  } else if (path_resolution(com->argv)==1){
+    int bg,bgpid,cnt;
+    
+    if (strcmp(com->argv[com->argc-1],"&")==0)
+    {
+      bg=1;
+      com->argv[com->argc-1]=NULL;
+      com->argc=com->argc-1;
+    }
+
+    if ((pid=fork())==0)
+    {
+      if (bg==1)
+      {
+        bgpid=getpid();
+      }
+      execv(com->argv[0],com->argv);
+      fprintf(stderr,"%s:command not found\n",com->argv[0]);
+      exit(1);
+    }
+    else
+    {
+      if (bg!=1) wait(&status);
+    }
     return 0;
   } else {
     fprintf(stderr, "%s: command not found\n", com->argv[0]);
@@ -113,20 +135,20 @@ int exec_com(struct single_command (*com))
   return 0; 
 }
 
-void *socket_thread(void* arg)
+void *socket_thread(void* argv)
 {
-  struct single_command *com2 = (struct single_command*)arg;
-  int server_socket;
+  struct single_command *com = (struct single_command*)argv;
+  int server_socket,client_socket,client_addr_size;
+  struct sockaddr_un server_addr, client_addr;
 
-  if (0==access(FILE_SERVER,F_OK)) unlink(FILE_SERVER);
+  if (access(FILE_SERVER,F_OK)==0) unlink(FILE_SERVER);
   
   server_socket=socket(PF_FILE,SOCK_STREAM,0);
-  struct sockaddr_un server_addr;
   memset(&server_addr,0,sizeof(server_addr));
   server_addr.sun_family = AF_UNIX;
   strcpy(server_addr.sun_path,FILE_SERVER);
 
-  if (-1 == bind(server_socket,(struct sockaddr*)&server_addr,sizeof(server_addr)))
+  if (bind(server_socket,(struct sockaddr*)&server_addr,sizeof(server_addr))==-1)
   {
     fprintf(stderr,"bind error!!\n");
     exit(1);
@@ -134,19 +156,16 @@ void *socket_thread(void* arg)
 
    while(1)
    {
-     if (-1 == listen (server_socket,5))
+     if (listen (server_socket,5)==-1)
      {
        fprintf(stderr,"listen error!!\n");
        continue;
      }
      
-     struct sockaddr_un client_addr;
-     int client_socket;
-     int client_addr_size;
      client_addr_size = sizeof(client_addr);
      client_socket=accept(server_socket,(struct sockaddr*)&client_addr,&client_addr_size);
 
-     if (-1 == client_socket)
+     if (client_socket==-1)
      {
        fprintf(stderr,"access error in server!!\n");
        continue;
@@ -156,7 +175,7 @@ void *socket_thread(void* arg)
      {
        close(0);
        dup2(client_socket,0);
-       exec_com(com2);
+       exec_commands(com);
        close(0);
        exit(0);
      }
