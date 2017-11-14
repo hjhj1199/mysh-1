@@ -40,13 +40,19 @@ int do_pwd(int argc, char** argv) {
 }
 
 int do_fg(int argc, char** argv) {
-  int status;
+  int status,pstate;
 
   if (!validate_fg_argv(argc, argv))
     return -1;
-
-  if (waitpid(0,&status,WNOHANG)>0) fprintf(stderr,"%d DONE\t%s\n",bg.pid,bg.argv);
-  else fprintf(stderr,"%d RUNNING\t%s\n",bg.pid,bg.argv);
+  pstate=waitpid(bg.pid,&status,WNOHANG);
+  if (pstate>0) fprintf(stderr,"%d DONE\t%s\n",bg.pid,bg.argv);
+  else if (pstate==0) 
+  {
+    fprintf(stderr,"%d RUNNING\t%s\n",bg.pid,bg.argv);
+    waitpid(bg.pid,&status,0);
+  }
+  else return 0;
+  
   return 0;
 }
 
