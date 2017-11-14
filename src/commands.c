@@ -68,16 +68,13 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
         while(1)
         {
           if (connect(client_socket,(struct sockaddr*)&server_addr,sizeof(server_addr))==-1) continue;
-          close(0);
-          close(1);
           dup2(client_socket,1);
           exec_commands(com);
           close(client_socket);
-          pthread_join(p_thread,NULL);
           exit(0);
         }
       }
-      pthread_join(p_thread,NULL);
+      //pthread_join(p_thread,NULL);
     }
   }
 
@@ -104,28 +101,43 @@ int exec_commands(struct single_command *com)
   } else if (strcmp(com->argv[0], "exit") == 0) {
     return 1;
   } else if (path_resolution(com->argv)==1){
-    int bg,bgpid,cnt;
-    
     if (strcmp(com->argv[com->argc-1],"&")==0)
     {
-      bg=1;
+      bg.flag=1;
       com->argv[com->argc-1]=NULL;
       com->argc=com->argc-1;
     }
 
+    if (bg.flag==1)
+    {
+      bg.argv=malloc(1);
+      for (int i=0;i<com->argc;i++)
+      {
+        bg.argv=realloc(bg.argv,strlen(com->argv[i])+strlen(bg.argv));
+        strcat(bg.argv,com->argv[i]);
+        strcat(bg.argv," ");
+      }
+     }
+
     if ((pid=fork())==0)
     {
-      if (bg==1)
-      {
-        bgpid=getpid();
-      }
+      pid=getpid();
       execv(com->argv[0],com->argv);
       fprintf(stderr,"%s:command not found\n",com->argv[0]);
       exit(1);
     }
     else
     {
-      if (bg!=1) wait(&status);
+      if (bg.flag==1)
+      {
+        pthread_t bg_thread;
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        bg.pid=pid;
+        bg.flag=0;
+        pthread_create(&bg_thread,&attr, background_thread, (void*)bg.argv);
+      }
+      else wait(&status);
     }
     return 0;
   } else {
@@ -135,10 +147,24 @@ int exec_commands(struct single_command *com)
   return 0; 
 }
 
+void *background_thread(void* argv)
+{
+  int status;
+
+  do
+  {
+    if (waitpid(0,&status,WNOHANG)>0) 
+    {
+      fprintf(stderr,"%d DONE\t%s\n",bg.pid,bg.argv);
+      pthread_exit(0);
+    }
+  }while(1);
+}
+
 void *socket_thread(void* argv)
 {
   struct single_command *com = (struct single_command*)argv;
-  int server_socket,client_socket,client_addr_size;
+  int server_socket,client_socket,client_addr_size,status;
   struct sockaddr_un server_addr, client_addr;
 
   if (access(FILE_SERVER,F_OK)==0) unlink(FILE_SERVER);
@@ -173,13 +199,14 @@ void *socket_thread(void* argv)
 
      if (fork()==0)
      {
-       close(0);
        dup2(client_socket,0);
        exec_commands(com);
-       close(0);
+       close(server_socket);
+       close(client_socket);
        exit(0);
      }
-     wait(0);
+     else wait(&status);
+     close(server_socket);
      close(client_socket);
      break;
    }
@@ -200,6 +227,4 @@ void free_commands(int n_commands, struct single_command (*commands)[512])
 
     free(argv);
   }
-
-  memset((*commands), 0, sizeof(struct single_command) * n_commands);
 }

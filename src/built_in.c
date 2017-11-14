@@ -6,7 +6,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <linux/limits.h>
-
+#include "commands.h"
 #include "built_in.h"
 
 int do_cd(int argc, char** argv) {
@@ -40,11 +40,13 @@ int do_pwd(int argc, char** argv) {
 }
 
 int do_fg(int argc, char** argv) {
+  int status;
+
   if (!validate_fg_argv(argc, argv))
     return -1;
 
-  // TODO: Fill this.
-
+  if (waitpid(0,&status,WNOHANG)>0) fprintf(stderr,"%d DONE\t%s\n",bg.pid,bg.argv);
+  else fprintf(stderr,"%d RUNNING\t%s\n",bg.pid,bg.argv);
   return 0;
 }
 

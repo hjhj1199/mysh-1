@@ -1,3 +1,4 @@
+#define _POSIX_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,7 @@ int main()
     n_commands = 0;
 
     if (ret == 1) {
+      kill(bg.pid,SIGKILL);
       break;
     }
     memset(&buf,0,sizeof(buf));
