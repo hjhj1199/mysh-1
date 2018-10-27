@@ -74,7 +74,7 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
           exit(0);
         }
       }
-      //pthread_join(p_thread,NULL);
+      wait(0);
     }
   }
 
